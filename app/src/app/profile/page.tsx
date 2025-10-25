@@ -25,13 +25,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
-type Session = {
-  id: string;
-  status: 'scheduled' | 'completed' | 'missed' | 'in-progress';
-  timestamp: Date;
-  duration?: number;
-};
-
 type UserProfile = {
   name: string;
   email: string;
@@ -56,7 +49,11 @@ export default function ProfilePage() {
   // Integrations expanded state
   const [integrationsExpanded, setIntegrationsExpanded] = useState(false);
 
-  const [sessions] = useState<Session[]>([]); // Removed mocked data
+  // Call state
+  const [isCallInProgress, setIsCallInProgress] = useState(false);
+  const [callStatus, setCallStatus] = useState<string | null>(null);
+  const [callError, setCallError] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   // TanStack Query hooks for integrations
   const { data: calendarStatus } = useCalendarStatus();
@@ -210,21 +207,6 @@ export default function ProfilePage() {
   const handleSignOut = async () => {
     await logOut();
     router.push('/signup');
-  };
-
-  const getStatusBadgeVariant = (status: Session['status']) => {
-    switch (status) {
-      case 'completed':
-        return 'default';
-      case 'in-progress':
-        return 'default';
-      case 'missed':
-        return 'destructive';
-      case 'scheduled':
-        return 'secondary';
-      default:
-        return 'default';
-    }
   };
 
   if (authLoading || isLoadingProfile) {
@@ -486,34 +468,6 @@ export default function ProfilePage() {
                   Manual Call Now
                 </Button>
               </div>
-
-              {sessions.length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="font-medium">Recent Sessions</h4>
-                  <div className="space-y-2">
-                    {sessions.map((session) => (
-                      <div
-                        key={session.id}
-                        className="flex items-center justify-between rounded-lg border p-3"
-                      >
-                        <div className="space-y-1">
-                          <Badge variant={getStatusBadgeVariant(session.status)}>
-                            {session.status}
-                          </Badge>
-                          <p className="text-sm text-muted-foreground">
-                            {session.timestamp.toLocaleString()}
-                          </p>
-                        </div>
-                        {session.duration && (
-                          <p className="text-sm text-muted-foreground">
-                            {session.duration} min
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </CardContent>
         </Card>

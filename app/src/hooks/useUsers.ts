@@ -1,13 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
-import { UserProfile, Session } from '@/lib/firebase/firestore';
+import type { Session, UserProfile, UserWithStatus } from '@/types';
+import { collection, getDocs, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
 
-export type UserWithStatus = UserProfile & {
-  status: 'active' | 'inactive' | 'in-call';
-};
+// Re-export types for backward compatibility
+export type { UserWithStatus };
 
 export function useUsers() {
   const [users, setUsers] = useState<UserWithStatus[]>([]);
