@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase/config';
+import { useAuth } from '@/hooks/useAuth';
 
 type Session = {
   id: string;
@@ -36,12 +39,27 @@ type Task = {
   notes?: string;
 };
 
+type UserProfile = {
+  name: string;
+  email: string;
+  phone: string;
+  timezone: string;
+  scheduleTime: string;
+};
+
 export default function ProfilePage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const [name] = useState('John Doe');
-  const [timezone, setTimezone] = useState('America/New_York');
-  const [phone] = useState('+1 (555) 123-4567');
-  const [scheduleTime, setScheduleTime] = useState('09:00');
+  const { user, loading: authLoading, logOut } = useAuth();
+
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
+
+  const [name, setName] = useState('');
+  const [timezone, setTimezone] = useState('');
+  const [phone, setPhone] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
 
   // Calendar state
   const [calendarConnected, setCalendarConnected] = useState(false);
@@ -61,59 +79,96 @@ export default function ProfilePage() {
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
   const [tasksError, setTasksError] = useState<string | null>(null);
 
-  const [sessions] = useState<Session[]>([
-    { id: '1', status: 'completed', timestamp: new Date('2025-10-24T10:00:00'), duration: 15 },
-    { id: '2', status: 'completed', timestamp: new Date('2025-10-23T10:00:00'), duration: 12 },
-    { id: '3', status: 'missed', timestamp: new Date('2025-10-22T10:00:00') },
-  ]);
+  const [sessions] = useState<Session[]>([]); // Removed mocked data
+
+  // Fetch user profile from Firestore
+  useEffect(() => {
+    if (authLoading) return;
+
+    if (!user) {
+      router.push('/signup');
+      return;
+    }
+
+    const fetchUserProfile = async () => {
+      setIsLoadingProfile(true);
+      setProfileError(null);
+      try {
+        const docRef = doc(db, 'users', user.uid);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+          const data = docSnap.data() as UserProfile;
+          setUserProfile(data);
+          setName(data.name);
+          setTimezone(data.timezone);
+          setPhone(data.phone);
+          setScheduleTime(data.scheduleTime);
+        } else {
+          setProfileError('User profile not found.');
+          // Optionally, redirect to signup or prompt to complete profile
+          router.push('/signup');
+        }
+      } catch (err) {
+        console.error('Error fetching user profile:', err);
+        setProfileError('Failed to load user profile.');
+      } finally {
+        setIsLoadingProfile(false);
+      }
+    };
+
+    fetchUserProfile();
+  }, [user, authLoading, router]);
 
   // Check all connections on mount
   useEffect(() => {
+    if (!userProfile) return; // Only check connections if user profile is loaded
+
     checkCalendarStatus();
     checkDriveStatus();
     checkTasksStatus();
 
     // Handle OAuth callback parameters
-    const calendarConnected = searchParams.get('calendar_connected');
-    const calendarError = searchParams.get('calendar_error');
-    const driveConnected = searchParams.get('drive_connected');
-    const driveError = searchParams.get('drive_error');
-    const tasksConnected = searchParams.get('tasks_connected');
-    const tasksError = searchParams.get('tasks_error');
+    const calendarConnectedParam = searchParams.get('calendar_connected');
+    const calendarErrorParam = searchParams.get('calendar_error');
+    const driveConnectedParam = searchParams.get('drive_connected');
+    const driveErrorParam = searchParams.get('drive_error');
+    const tasksConnectedParam = searchParams.get('tasks_connected');
+    const tasksErrorParam = searchParams.get('tasks_error');
 
-    if (calendarConnected === 'true') {
+    if (calendarConnectedParam === 'true') {
       setCalendarConnected(true);
       fetchCalendarEvents();
       window.history.replaceState({}, '', '/profile');
     }
 
-    if (calendarError) {
-      setCalendarError(getErrorMessage(calendarError));
+    if (calendarErrorParam) {
+      setCalendarError(getErrorMessage(calendarErrorParam));
       window.history.replaceState({}, '', '/profile');
     }
 
-    if (driveConnected === 'true') {
+    if (driveConnectedParam === 'true') {
       setDriveConnected(true);
       fetchDriveDocuments();
       window.history.replaceState({}, '', '/profile');
     }
 
-    if (driveError) {
-      setDriveError(getErrorMessage(driveError));
+    if (driveErrorParam) {
+      setDriveError(getErrorMessage(driveErrorParam));
       window.history.replaceState({}, '', '/profile');
     }
 
-    if (tasksConnected === 'true') {
+    if (tasksConnectedParam === 'true') {
       setTasksConnected(true);
       fetchTasks();
       window.history.replaceState({}, '', '/profile');
     }
 
-    if (tasksError) {
-      setTasksError(getErrorMessage(tasksError));
+    if (tasksErrorParam) {
+      setTasksError(getErrorMessage(tasksErrorParam));
       window.history.replaceState({}, '', '/profile');
     }
-  }, [searchParams]);
+  }, [searchParams, userProfile]); // Depend on userProfile to ensure it's loaded
 
   const getErrorMessage = (error: string) => {
     switch (error) {
@@ -291,6 +346,27 @@ export default function ProfilePage() {
     }
   };
 
+  const handleSaveSchedule = async () => {
+    if (!user || !userProfile) return;
+
+    try {
+      const userDocRef = doc(db, 'users', user.uid);
+      await updateDoc(userDocRef, {
+        timezone,
+        scheduleTime,
+      });
+      alert('Schedule settings saved!');
+    } catch (error) {
+      console.error('Error saving schedule settings:', error);
+      alert('Failed to save schedule settings.');
+    }
+  };
+
+  const handleSignOut = async () => {
+    await logOut();
+    router.push('/signup');
+  };
+
   const getStatusColor = (status: Session['status']) => {
     switch (status) {
       case 'completed':
@@ -303,6 +379,22 @@ export default function ProfilePage() {
         return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
     }
   };
+
+  if (authLoading || isLoadingProfile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <p className="text-gray-700 dark:text-gray-300">Loading profile...</p>
+      </div>
+    );
+  }
+
+  if (profileError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <p className="text-red-500">Error: {profileError}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -320,12 +412,12 @@ export default function ProfilePage() {
                 <span>{timezone}</span>
               </div>
             <div>
-              <Link
-                href="/"
+              <button
+                onClick={handleSignOut}
                 className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
               >
                 Sign Out
-              </Link>
+              </button>
             </div>
             </div>
           </div>
@@ -374,7 +466,10 @@ export default function ProfilePage() {
                   />
                 </div>
 
-                <button className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition">
+                <button
+                  onClick={handleSaveSchedule}
+                  className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition"
+                >
                   Save Schedule
                 </button>
               </div>

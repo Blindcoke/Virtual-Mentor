@@ -143,9 +143,8 @@ export default function SignupPage() {
       setConfirmationResult(confirmation);
       setStep('otp');
     } catch (err) {
-      console.error('❌ Error sending OTP:', err);
+      console.error('Error sending OTP:', err);
       const error = err as { code?: string; message?: string };
-
       if (error.code === 'auth/invalid-phone-number') {
         setError('Invalid phone number format. Please use international format: +1234567890 (+ followed by country code and number)');
       } else if (error.code === 'auth/too-many-requests') {
