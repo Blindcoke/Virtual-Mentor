@@ -1,15 +1,13 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Lato } from "next/font/google";
+import { QueryProvider } from "@/providers/query-provider";
+import { ToastProvider } from "@/providers/toast-provider";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const lato = Lato({
+  variable: "--font-lato",
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: ["300", "400", "700", "900"],
 });
 
 export const metadata: Metadata = {
@@ -25,9 +23,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${lato.variable} antialiased`}
       >
-        {children}
+        <QueryProvider>
+          {children}
+          <ToastProvider />
+        </QueryProvider>
       </body>
     </html>
   );
