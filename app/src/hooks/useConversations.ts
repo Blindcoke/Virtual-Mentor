@@ -15,15 +15,17 @@ import type { Message, Conversation } from '@/types';
 // Re-export types for backward compatibility
 export type { Message, Conversation };
 
-export function useConversations(userId: string) {
+export function useConversations(userId: string | undefined) {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [loading, setLoading] = useState(!!userId);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    // If no userId provided, skip setting up listeners
-    if (!userId) {
+    // If no userId provided or empty string, skip setting up listeners
+    if (!userId || userId.trim() === '') {
       console.log('⚠️ No userId provided to useConversations');
+      setConversation(null);
+      setLoading(false);
       return;
     }
 

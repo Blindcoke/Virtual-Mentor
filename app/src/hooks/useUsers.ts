@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
-import type { UserProfile, Session, UserWithStatus } from '@/types';
+import type { Session, UserProfile, UserWithStatus } from '@/types';
+import { collection, getDocs, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
 
 // Re-export types for backward compatibility
 export type { UserWithStatus };
@@ -60,7 +60,7 @@ export function useUsers() {
           console.log('📥 useUsers: Received users snapshot, size:', snapshot.size);
           const userProfiles = snapshot.docs.map(doc => ({
             ...doc.data(),
-            uid: doc.id
+            uid: doc.id  // Include document ID as uid
           } as UserProfile));
           await updateUsersWithStatus(userProfiles);
           setLoading(false);
@@ -84,7 +84,10 @@ export function useUsers() {
       async () => {
         try {
           const usersSnapshot = await getDocs(collection(db, 'users'));
-          const userProfiles = usersSnapshot.docs.map(doc => doc.data() as UserProfile);
+          const userProfiles = usersSnapshot.docs.map(doc => ({
+            ...doc.data(),
+            uid: doc.id  // Include document ID as uid
+          } as UserProfile));
           await updateUsersWithStatus(userProfiles);
         } catch {
           // Silent error handling for session updates
