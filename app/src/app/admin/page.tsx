@@ -11,7 +11,7 @@ export default function AdminPage() {
   const { users, loading: usersLoading, error: usersError } = useUsers();
   // Auto-select first user when users load
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const { conversation, loading: conversationLoading, error: conversationError } = useConversations(selectedUserId || '');
+  const { conversation, loading: conversationLoading, error: conversationError } = useConversations(selectedUserId || undefined);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-select first user - derived from users array

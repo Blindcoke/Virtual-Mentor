@@ -59,7 +59,10 @@ export function useUsers() {
       async (snapshot) => {
         try {
           console.log('📥 useUsers: Received users snapshot, size:', snapshot.size);
-          const userProfiles = snapshot.docs.map(doc => doc.data() as UserProfile);
+          const userProfiles = snapshot.docs.map(doc => ({
+            ...doc.data(),
+            uid: doc.id  // Include document ID as uid
+          } as UserProfile));
           await updateUsersWithStatus(userProfiles);
           setLoading(false);
         } catch (err) {
@@ -82,7 +85,10 @@ export function useUsers() {
       async () => {
         try {
           const usersSnapshot = await getDocs(collection(db, 'users'));
-          const userProfiles = usersSnapshot.docs.map(doc => doc.data() as UserProfile);
+          const userProfiles = usersSnapshot.docs.map(doc => ({
+            ...doc.data(),
+            uid: doc.id  // Include document ID as uid
+          } as UserProfile));
           await updateUsersWithStatus(userProfiles);
         } catch {
           // Silent error handling for session updates
