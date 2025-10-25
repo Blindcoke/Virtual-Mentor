@@ -7,16 +7,19 @@ import {
   where,
   onSnapshot,
   orderBy,
-  limit
+  limit,
+  getDoc,
+  doc
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
-import type { Message, Conversation } from '@/types';
+import type { Conversation, ConversationMessage, UserProfile } from '@/types';
 
 // Re-export types for backward compatibility
-export type { Message, Conversation };
+export type { Conversation, ConversationMessage };
 
 export function useConversations(userId: string | undefined) {
   const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(!!userId);
   const [error, setError] = useState<Error | null>(null);
 
@@ -25,6 +28,7 @@ export function useConversations(userId: string | undefined) {
     if (!userId || userId.trim() === '') {
       console.log('⚠️ No userId provided to useConversations');
       setConversation(null);
+      setMessages([]);
       setLoading(false);
       return;
     }
@@ -34,137 +38,175 @@ export function useConversations(userId: string | undefined) {
     let unsubscribeMessages: (() => void) | undefined;
     let isInitialLoad = true;
 
-    // 1. Listen to sessions for this user
-    const sessionsRef = collection(db, 'sessions');
-    const sessionsQuery = query(
-      sessionsRef,
-      where('userId', '==', userId),
-      orderBy('timestamp', 'desc'),
-      limit(1) // Only get the most recent session
-    );
+    // Get user's phone number from their profile
+    const getUserPhone = async () => {
+      const userRef = doc(db, 'users', userId);
+      const userSnap = await getDoc(userRef);
 
-    console.log('🔍 useConversations: Querying sessions for userId:', userId);
+      if (!userSnap.exists()) {
+        console.log('⚠️ User profile not found for userId:', userId);
+        return null;
+      }
 
-    const unsubscribeSessions = onSnapshot(
-      sessionsQuery,
-      (sessionSnapshot) => {
-        console.log('📥 useConversations: Session snapshot received, size:', sessionSnapshot.size);
+      const userData = userSnap.data() as UserProfile;
+      return userData.phone;
+    };
 
-        // If no sessions found
-        if (sessionSnapshot.empty) {
-          console.log('ℹ️ useConversations: No sessions found for user:', userId);
-          setConversation(null);
+    // Set up listeners
+    const setupListeners = async () => {
+      const phoneNumber = await getUserPhone();
+
+      if (!phoneNumber) {
+        console.log('⚠️ No phone number found for user:', userId);
+        setConversation(null);
+        setMessages([]);
+        setLoading(false);
+        return;
+      }
+
+      console.log('📞 useConversations: Querying conversations for phone:', phoneNumber);
+
+      // 1. Listen to conversations for this phone number
+      const conversationsRef = collection(db, 'conversations');
+      const conversationsQuery = query(
+        conversationsRef,
+        where('phone_number', '==', phoneNumber),
+        orderBy('started_at', 'desc'),
+        limit(1) // Only get the most recent conversation
+      );
+
+      const unsubscribeConversations = onSnapshot(
+        conversationsQuery,
+        (conversationSnapshot) => {
+          console.log('📥 useConversations: Conversation snapshot received, size:', conversationSnapshot.size);
+
+          // If no conversations found
+          if (conversationSnapshot.empty) {
+            console.log('ℹ️ useConversations: No conversations found for phone:', phoneNumber);
+            setConversation(null);
+            setMessages([]);
+            setLoading(false);
+            return;
+          }
+
+          // Get the most recent conversation
+          const conversationDoc = conversationSnapshot.docs[0];
+          const conversationData = conversationDoc.data();
+          const conversationId = conversationDoc.id;
+
+          console.log('📄 useConversations: Conversation found:', conversationId, 'Status:', conversationData.status, 'Data:', conversationData);
+
+          // Set conversation data
+          setConversation({
+            id: conversationId,
+            ...conversationData,
+          } as Conversation);
+
+          // 2. Listen to messages in this conversation (subcollection)
+          const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+          const messagesQuery = query(messagesRef, orderBy('timestamp', 'asc'));
+
+          console.log('🔍 useConversations: Setting up messages listener for conversation:', conversationId);
+
+          // Clean up previous messages listener if exists
+          if (unsubscribeMessages) {
+            console.log('🧹 useConversations: Cleaning up previous messages listener');
+            unsubscribeMessages();
+          }
+
+          unsubscribeMessages = onSnapshot(
+            messagesQuery,
+            (messagesSnapshot) => {
+              console.log('📥 useConversations: Messages snapshot received, count:', messagesSnapshot.size);
+
+              // Convert Firestore messages to our ConversationMessage type
+              const conversationMessages: ConversationMessage[] = messagesSnapshot.docs.map((doc) => {
+                const data = doc.data();
+                console.log('💬 useConversations: Processing message:', doc.id, data);
+
+                return {
+                  id: doc.id,
+                  message: data.message || '',
+                  role: data.role || 'user',
+                  timestamp: data.timestamp,
+                  user_id: data.user_id || null,
+                };
+              });
+
+              console.log('✅ useConversations: Messages updated:', conversationMessages.length, 'messages');
+
+              setMessages(conversationMessages);
+              if (isInitialLoad) {
+                setLoading(false);
+                isInitialLoad = false;
+              }
+              setError(null);
+            },
+            (err) => {
+              console.error('❌ useConversations: Error in messages listener:', err);
+              console.error('❌ useConversations: Error details:', err.code, err.message);
+              setError(err as Error);
+              setLoading(false);
+            }
+          );
+        },
+        (err) => {
+          console.error('❌ useConversations: Error in conversations listener:', err);
+          console.error('❌ useConversations: Error details:', err.code, err.message);
+          setError(err as Error);
           setLoading(false);
-          return;
         }
+      );
 
-        // Get the most recent session
-        const sessionDoc = sessionSnapshot.docs[0];
-        const sessionData = sessionDoc.data();
-        const sessionId = sessionDoc.id;
-
-        console.log('📄 useConversations: Session found:', sessionId, 'Status:', sessionData.status, 'Data:', sessionData);
-
-        // 2. Listen to messages in this session (subcollection)
-        const messagesRef = collection(db, 'sessions', sessionId, 'messages');
-        const messagesQuery = query(messagesRef, orderBy('timestamp', 'asc'));
-
-        console.log('🔍 useConversations: Setting up messages listener for session:', sessionId);
-
-        // Clean up previous messages listener if exists
+      // Return cleanup function
+      return () => {
+        console.log('🔌 Cleaning up conversation listeners');
+        unsubscribeConversations();
         if (unsubscribeMessages) {
-          console.log('🧹 useConversations: Cleaning up previous messages listener');
           unsubscribeMessages();
         }
+      };
+    };
 
-        unsubscribeMessages = onSnapshot(
-          messagesQuery,
-          (messagesSnapshot) => {
-            console.log('📥 useConversations: Messages snapshot received, count:', messagesSnapshot.size);
-
-            // Convert Firestore messages to our Message type
-            const messages: Message[] = messagesSnapshot.docs.map((doc) => {
-              const data = doc.data();
-              console.log('💬 useConversations: Processing message:', doc.id, data);
-
-              return {
-                id: doc.id,
-                text: data.text || '',
-                sender: data.sender || 'user',
-                timestamp: data.timestamp?.toDate() || new Date(),
-                isTranscribing: data.isTranscribing || false,
-              };
-            });
-
-            // Build conversation object
-            const conversationData: Conversation = {
-              id: sessionId,
-              userId,
-              messages,
-              isActive: sessionData.status === 'in-progress',
-              createdAt: sessionData.timestamp?.toDate(),
-              updatedAt: sessionData.updatedAt?.toDate(),
-            };
-
-            console.log('✅ useConversations: Conversation updated:', conversationData.messages.length, 'messages', conversationData);
-
-            setConversation(conversationData);
-            if (isInitialLoad) {
-              setLoading(false);
-              isInitialLoad = false;
-            }
-            setError(null);
-          },
-          (err) => {
-            console.error('❌ useConversations: Error in messages listener:', err);
-            console.error('❌ useConversations: Error details:', err.code, err.message);
-            setError(err as Error);
-            setLoading(false);
-          }
-        );
-      },
-      (err) => {
-        console.error('❌ useConversations: Error in sessions listener:', err);
-        console.error('❌ useConversations: Error details:', err.code, err.message);
-        setError(err as Error);
-        setLoading(false);
-      }
-    );
+    let cleanup: (() => void) | undefined;
+    setupListeners().then((cleanupFn) => {
+      cleanup = cleanupFn;
+    });
 
     // Cleanup function
     return () => {
-      console.log('🔌 Cleaning up conversation listeners for user:', userId);
-      unsubscribeSessions();
-      if (unsubscribeMessages) {
-        unsubscribeMessages();
+      if (cleanup) {
+        cleanup();
       }
     };
   }, [userId]); // Re-run when userId changes
 
-  return { conversation, loading, error };
+  return { conversation, messages, loading, error };
 }
 
 /*
  * HOW THIS WORKS:
  *
- * 1. Listens to the 'sessions' collection filtered by userId
- * 2. Gets the most recent session (limit 1, ordered by timestamp)
- * 3. For that session, listens to the 'messages' subcollection
- * 4. Automatically updates when:
+ * 1. Gets user's phone number from their profile
+ * 2. Listens to the 'conversations' collection filtered by phone_number
+ * 3. Gets the most recent conversation (limit 1, ordered by started_at)
+ * 4. For that conversation, listens to the 'messages' subcollection
+ * 5. Automatically updates when:
  *    - New messages are added
- *    - Messages are updated
- *    - Session status changes
+ *    - Conversation status changes
  *
  * FIRESTORE STRUCTURE:
- * sessions/
- *   └── {sessionId}/
- *       ├── userId: string
- *       ├── status: 'pending' | 'in-progress' | 'completed'
- *       ├── timestamp: Timestamp
+ * conversations/
+ *   └── {conversationId}/
+ *       ├── phone_number: string
+ *       ├── status: 'active' | 'completed'
+ *       ├── started_at: Timestamp
+ *       ├── ended_at: Timestamp | null
+ *       ├── last_message: string
  *       └── messages/ (subcollection)
  *           └── {messageId}/
- *               ├── text: string
- *               ├── sender: 'ai' | 'user'
+ *               ├── message: string
+ *               ├── role: 'assistant' | 'user'
  *               ├── timestamp: Timestamp
- *               └── isTranscribing: boolean
+ *               └── user_id: string | null
  */

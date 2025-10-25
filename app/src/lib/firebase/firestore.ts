@@ -15,10 +15,16 @@ import {
   QueryConstraint,
 } from 'firebase/firestore';
 import { db } from './config';
-import type { UserProfile, Session, CalendarConnection } from '@/types';
+import type {
+  UserProfile,
+  CalendarConnection,
+  CallSession,
+  Conversation,
+  ConversationMessage,
+} from '@/types';
 
 // Re-export types for backward compatibility
-export type { UserProfile, Session, CalendarConnection };
+export type { UserProfile, CalendarConnection, CallSession, Conversation, ConversationMessage };
 
 // User Profile Operations
 export const createUserProfile = async (
@@ -55,43 +61,79 @@ export const updateUserProfile = async (
   });
 };
 
-// Session Operations
-export const createSession = async (
-  sessionData: Omit<Session, 'id'>
-): Promise<string> => {
-  const sessionsRef = collection(db, 'sessions');
-  const newSessionRef = doc(sessionsRef);
-
-  await setDoc(newSessionRef, {
-    ...sessionData,
-    id: newSessionRef.id,
-  });
-
-  return newSessionRef.id;
-};
-
-export const getUserSessions = async (
-  userId: string,
+// Call Session Operations (Read-only - created by external system)
+export const getCallSessionsByPhone = async (
+  phoneNumber: string,
   limitCount: number = 10
-): Promise<Session[]> => {
-  const sessionsRef = collection(db, 'sessions');
+): Promise<CallSession[]> => {
+  const callSessionsRef = collection(db, 'call_sessions');
   const q = query(
-    sessionsRef,
-    where('userId', '==', userId),
-    orderBy('timestamp', 'desc'),
+    callSessionsRef,
+    where('phone_number', '==', phoneNumber),
+    orderBy('started_at', 'desc'),
     limit(limitCount)
   );
 
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => doc.data() as Session);
+  return querySnapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+  } as CallSession));
 };
 
-export const updateSession = async (
-  sessionId: string,
-  data: Partial<Session>
-): Promise<void> => {
-  const sessionRef = doc(db, 'sessions', sessionId);
-  await updateDoc(sessionRef, data);
+// Conversation Operations (Read-only - created by external system)
+export const getConversationsByPhone = async (
+  phoneNumber: string,
+  limitCount: number = 10
+): Promise<Conversation[]> => {
+  const conversationsRef = collection(db, 'conversations');
+  const q = query(
+    conversationsRef,
+    where('phone_number', '==', phoneNumber),
+    orderBy('started_at', 'desc'),
+    limit(limitCount)
+  );
+
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+  } as Conversation));
+};
+
+export const getConversation = async (
+  conversationId: string
+): Promise<Conversation | null> => {
+  const conversationRef = doc(db, 'conversations', conversationId);
+  const conversationSnap = await getDoc(conversationRef);
+
+  if (conversationSnap.exists()) {
+    return {
+      id: conversationSnap.id,
+      ...conversationSnap.data(),
+    } as Conversation;
+  }
+  return null;
+};
+
+export const getConversationMessages = async (
+  conversationId: string,
+  limitCount?: number
+): Promise<ConversationMessage[]> => {
+  const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+  const constraints: QueryConstraint[] = [orderBy('timestamp', 'asc')];
+
+  if (limitCount) {
+    constraints.push(limit(limitCount));
+  }
+
+  const q = query(messagesRef, ...constraints);
+  const querySnapshot = await getDocs(q);
+
+  return querySnapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+  } as ConversationMessage));
 };
 
 // Calendar Connection Operations

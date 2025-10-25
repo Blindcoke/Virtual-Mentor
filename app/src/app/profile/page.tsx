@@ -16,13 +16,14 @@ import {
   useTasksList,
   useTasksStatus,
 } from '@/hooks/use-integrations';
+import { useInitiateCall } from '@/hooks/use-call';
 import { useAuth } from '@/hooks/useAuth';
 import { db } from '@/lib/firebase/config';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 type UserProfile = {
@@ -33,7 +34,7 @@ type UserProfile = {
   scheduleTime: string;
 };
 
-export default function ProfilePage() {
+function ProfileContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading: authLoading, logOut } = useAuth();
@@ -49,12 +50,6 @@ export default function ProfilePage() {
   // Integrations expanded state
   const [integrationsExpanded, setIntegrationsExpanded] = useState(false);
 
-  // Call state
-  const [isCallInProgress, setIsCallInProgress] = useState(false);
-  const [callStatus, setCallStatus] = useState<string | null>(null);
-  const [callError, setCallError] = useState<string | null>(null);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-
   // TanStack Query hooks for integrations
   const { data: calendarStatus } = useCalendarStatus();
   const { data: calendarEventsData } = useCalendarEvents();
@@ -67,6 +62,7 @@ export default function ProfilePage() {
   const disconnectCalendar = useDisconnectCalendar();
   const disconnectDrive = useDisconnectDrive();
   const disconnectTasks = useDisconnectTasks();
+  const initiateCall = useInitiateCall();
 
   // Fetch user profile from Firestore
   useEffect(() => {
@@ -161,7 +157,16 @@ export default function ProfilePage() {
   };
 
   const handleManualCall = async () => {
-    toast.info('Manual call initiated!');
+    if (!user || !userProfile?.phone) {
+      toast.error('Phone number not found. Please update your profile.');
+      return;
+    }
+
+    initiateCall.mutate({
+      phoneNumber: userProfile.phone,
+      userId: user.uid,
+      userName: userProfile.name,
+    });
   };
 
   const handleConnectCalendar = async () => {
@@ -464,8 +469,12 @@ export default function ProfilePage() {
                   </p>
                 </div>
 
-                <Button onClick={handleManualCall} className="w-full">
-                  Manual Call Now
+                <Button
+                  onClick={handleManualCall}
+                  className="w-full"
+                  disabled={initiateCall.isPending}
+                >
+                  {initiateCall.isPending ? 'Calling...' : 'Call me now'}
                 </Button>
               </div>
             </div>
@@ -473,5 +482,19 @@ export default function ProfilePage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#FFF9F4' }}>
+          <p className="text-gray-700">Loading profile...</p>
+        </div>
+      }
+    >
+      <ProfileContent />
+    </Suspense>
   );
 }
