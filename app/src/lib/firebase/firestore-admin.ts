@@ -1,26 +1,14 @@
 import { adminDb } from './admin';
 import { Timestamp } from 'firebase-admin/firestore';
+import type { SessionAdmin } from '@/types';
 
 /**
  * Server-side Firestore operations using Admin SDK
  * These bypass security rules and should only be used in API routes
  */
 
-// Admin SDK version of Session interface (uses admin Timestamp)
-export interface SessionAdmin {
-  id: string;
-  userId: string;
-  status: 'scheduled' | 'completed' | 'missed' | 'in-progress' | 'ringing' | 'connected' | 'ended';
-  timestamp: FirebaseFirestore.Timestamp;
-  duration?: number;
-  transcript?: string;
-  notes?: string;
-  roomName?: string;
-  phoneNumber?: string;
-  callStatus?: 'initiating' | 'ringing' | 'connected' | 'disconnected' | 'failed';
-  connectedAt?: FirebaseFirestore.Timestamp;
-  endedAt?: FirebaseFirestore.Timestamp;
-}
+// Re-export types
+export type { SessionAdmin };
 
 export const createSessionAdmin = async (
   sessionData: Omit<SessionAdmin, 'id'>

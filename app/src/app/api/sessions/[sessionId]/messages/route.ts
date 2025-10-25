@@ -1,7 +1,8 @@
 // app/api/sessions/[sessionId]/messages/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase/config';
-import { collection, addDoc, Timestamp, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, Timestamp } from 'firebase/firestore';
+import { verifySessionExists } from '@/lib/api/session-utils';
 
 /**
  * API endpoint to add messages to a session
@@ -36,15 +37,10 @@ export async function POST(
       );
     }
 
-    // Verify session exists
-    const sessionRef = doc(db, 'sessions', sessionId);
-    const sessionSnap = await getDoc(sessionRef);
-
-    if (!sessionSnap.exists()) {
-      return NextResponse.json(
-        { error: 'Session not found' },
-        { status: 404 }
-      );
+    // Verify session exists using shared utility
+    const validation = await verifySessionExists(sessionId);
+    if (!validation.valid) {
+      return validation.error!;
     }
 
     // Add message to the session's messages subcollection
@@ -86,15 +82,10 @@ export async function GET(
   try {
     const { sessionId } = await params;
 
-    // Verify session exists
-    const sessionRef = doc(db, 'sessions', sessionId);
-    const sessionSnap = await getDoc(sessionRef);
-
-    if (!sessionSnap.exists()) {
-      return NextResponse.json(
-        { error: 'Session not found' },
-        { status: 404 }
-      );
+    // Verify session exists using shared utility
+    const validation = await verifySessionExists(sessionId);
+    if (!validation.valid) {
+      return validation.error!;
     }
 
     // Get all messages from the subcollection

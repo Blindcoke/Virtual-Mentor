@@ -3,9 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useUsers } from '@/hooks/useUsers';
 import { useConversations } from '@/hooks/useConversations';
-import { createSession } from '@/lib/firebase/firestore';
-import { Timestamp } from 'firebase/firestore';
-import Link from 'next/dist/client/link';
+import Link from 'next/link';
 
 export default function AdminPage() {
   const { users, loading: usersLoading, error: usersError } = useUsers();
@@ -35,11 +33,33 @@ export default function AdminPage() {
 
   const handleTriggerCall = async (userId: string) => {
     try {
-      await createSession({
-        userId,
-        status: 'in-progress',
-        timestamp: Timestamp.now(),
+      // Get user details
+      const selectedUser = users.find(u => u.uid === userId);
+      if (!selectedUser || !selectedUser.phone) {
+        console.error('User not found or has no phone number');
+        return;
+      }
+
+      // Initiate the actual call via API
+      const response = await fetch('/api/call/initiate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phoneNumber: selectedUser.phone,
+          userId: selectedUser.uid,
+          userName: selectedUser.name,
+        }),
       });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to initiate call');
+      }
+
+      console.log('✅ Call initiated from admin, session ID:', data.sessionId);
       setSelectedUserId(userId);
     } catch (error) {
       console.error('Error starting call:', error);
@@ -64,19 +84,11 @@ export default function AdminPage() {
 
         {/* Stats */}
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
-              <p className="text-xs text-blue-600 dark:text-blue-400">Active Calls</p>
-              <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">
-                {users.filter(u => u.status === 'in-call').length}
-              </p>
-            </div>
-            <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
-              <p className="text-xs text-green-600 dark:text-green-400">Total Users</p>
-              <p className="text-2xl font-bold text-green-700 dark:text-green-300">
-                {users.length}
-              </p>
-            </div>
+          <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
+            <p className="text-xs text-green-600 dark:text-green-400">Total Users</p>
+            <p className="text-2xl font-bold text-green-700 dark:text-green-300">
+              {users.length}
+            </p>
           </div>
         </div>
 
@@ -87,10 +99,7 @@ export default function AdminPage() {
           ) : usersError ? (
             <div className="p-4 text-center text-red-500 dark:text-red-400">Error loading users.</div>
           ) : (
-            users.map((user) => {
-              const isActive = user.status === 'in-call';
-
-              return (
+            users.map((user) => (
                 <div
                   key={user.uid}
                   onClick={() => setSelectedUserId(user.uid)}
@@ -100,31 +109,25 @@ export default function AdminPage() {
                     }`}
                 >
                   <div className="flex items-start justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-green-500 animate-pulse' : 'bg-gray-300'
-                        }`} />
-                      <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
-                        {user.name}
-                      </h3>
-                    </div>
+                    <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
+                      {user.name}
+                    </h3>
                   </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
                     {user.phone}
                   </p>
-                  {!isActive && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleTriggerCall(user.uid);
-                      }}
-                      className="mt-2 w-full px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
-                    >
-                      Start Call
-                    </button>
-                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleTriggerCall(user.uid);
+                    }}
+                    className="mt-2 w-full px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
+                  >
+                    Trigger Call
+                  </button>
                 </div>
-              );
-            })
+              )
+            )
           )}
         </div>
       </div>
@@ -141,11 +144,6 @@ export default function AdminPage() {
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   {selectedUser.phone}
-                  {conversation?.isActive && (
-                    <span className="ml-2 text-green-600 dark:text-green-400">
-                      • Live
-                    </span>
-                  )}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -159,7 +157,13 @@ export default function AdminPage() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 p-6">
-          {conversationLoading ? (
+          {!selectedUserId ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center text-gray-500 dark:text-gray-400">
+                Select a user to view their conversation
+              </div>
+            </div>
+          ) : conversationLoading ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center text-gray-500 dark:text-gray-400">Loading conversation...</div>
             </div>
@@ -202,29 +206,17 @@ export default function AdminPage() {
           ) : (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
-                <p className="text-gray-500 dark:text-gray-400 mb-4">
-                  No messages yet
+                <p className="text-gray-500 dark:text-gray-400 mb-2">
+                  No conversation history
                 </p>
-                <button
-                  onClick={() => handleTriggerCall(selectedUserId!)}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
-                >
-                  Start Conversation
-                </button>
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  Messages will appear here once a call is triggered
+                </p>
               </div>
             </div>
           )}
         </div>
 
-        {/* Transcription Indicator */}
-        {conversation?.isActive && (
-          <div className="bg-blue-50 dark:bg-blue-900/20 border-t border-blue-200 dark:border-blue-800 px-6 py-3">
-            <div className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-300">
-              <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse" />
-              <span>Live transcription active</span>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

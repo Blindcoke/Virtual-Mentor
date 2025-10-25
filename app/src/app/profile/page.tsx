@@ -5,13 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { useAuth } from '@/hooks/useAuth';
-
-type Session = {
-  id: string;
-  status: 'scheduled' | 'completed' | 'missed' | 'in-progress';
-  timestamp: Date;
-  duration?: number;
-};
+import type { Session } from '@/types';
 
 type CalendarEvent = {
   id: string;
@@ -55,11 +49,6 @@ export default function ProfilePage() {
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
 
-  const [name, setName] = useState('');
-  const [timezone, setTimezone] = useState('');
-  const [phone, setPhone] = useState('');
-  const [scheduleTime, setScheduleTime] = useState('');
-
   // Calendar state
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
@@ -77,8 +66,6 @@ export default function ProfilePage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
   const [tasksError, setTasksError] = useState<string | null>(null);
-
-  const [sessions] = useState<Session[]>([]); // Removed mocked data
 
   // Call state
   const [isCallInProgress, setIsCallInProgress] = useState(false);
@@ -105,10 +92,6 @@ export default function ProfilePage() {
         if (docSnap.exists()) {
           const data = docSnap.data() as UserProfile;
           setUserProfile(data);
-          setName(data.name);
-          setTimezone(data.timezone);
-          setPhone(data.phone);
-          setScheduleTime(data.scheduleTime);
         } else {
           setProfileError('User profile not found.');
           // Optionally, redirect to signup or prompt to complete profile
@@ -272,7 +255,7 @@ export default function ProfilePage() {
       return;
     }
 
-    if (!phone) {
+    if (!userProfile.phone) {
       setCallError('Phone number not set. Please add your phone number in settings.');
       return;
     }
@@ -288,9 +271,9 @@ export default function ProfilePage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          phoneNumber: phone,
+          phoneNumber: userProfile.phone,
           userId: user.uid,
-          userName: name,
+          userName: userProfile.name,
         }),
       });
 
@@ -302,7 +285,7 @@ export default function ProfilePage() {
 
       // Set the active session ID to start real-time monitoring
       setActiveSessionId(data.sessionId);
-      setCallStatus(`Call initiated! Calling ${phone}...`);
+      setCallStatus(`Call initiated! Calling ${userProfile.phone}...`);
 
       console.log('✅ Call initiated, session ID:', data.sessionId);
     } catch (error) {
@@ -452,9 +435,9 @@ export default function ProfilePage() {
     try {
       const userDocRef = doc(db, 'users', user.uid);
       await updateDoc(userDocRef, {
-        phone,
-        timezone,
-        scheduleTime,
+        phone: userProfile.phone,
+        timezone: userProfile.timezone,
+        scheduleTime: userProfile.scheduleTime,
       });
       alert('Settings saved successfully!');
     } catch (error) {
@@ -466,19 +449,6 @@ export default function ProfilePage() {
   const handleSignOut = async () => {
     await logOut();
     router.push('/signup');
-  };
-
-  const getStatusColor = (status: Session['status']) => {
-    switch (status) {
-      case 'completed':
-        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'in-progress':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-      case 'missed':
-        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-      case 'scheduled':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
-    }
   };
 
   if (authLoading || isLoadingProfile) {
@@ -505,12 +475,12 @@ export default function ProfilePage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                {name}
+                {userProfile?.name}
               </h1>
               <div className="mt-1 flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-                <span>{phone}</span>
+                <span>{userProfile?.phone}</span>
                 <span>•</span>
-                <span>{timezone}</span>
+                <span>{userProfile?.timezone}</span>
               </div>
             <div>
               <button
@@ -542,8 +512,8 @@ export default function ProfilePage() {
                   <input
                     id="phone"
                     type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    value={userProfile?.phone || ''}
+                    onChange={(e) => setUserProfile(prev => prev ? {...prev, phone: e.target.value} : null)}
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                     placeholder="+1234567890"
                   />
@@ -558,8 +528,8 @@ export default function ProfilePage() {
                   </label>
                   <select
                     id="timezone"
-                    value={timezone}
-                    onChange={(e) => setTimezone(e.target.value)}
+                    value={userProfile?.timezone || ''}
+                    onChange={(e) => setUserProfile(prev => prev ? {...prev, timezone: e.target.value} : null)}
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                   >
                     <option value="America/New_York">Eastern Time (ET)</option>
@@ -578,8 +548,8 @@ export default function ProfilePage() {
                   <input
                     id="schedule-time"
                     type="time"
-                    value={scheduleTime}
-                    onChange={(e) => setScheduleTime(e.target.value)}
+                    value={userProfile?.scheduleTime || ''}
+                    onChange={(e) => setUserProfile(prev => prev ? {...prev, scheduleTime: e.target.value} : null)}
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                   />
                 </div>
@@ -817,35 +787,6 @@ export default function ProfilePage() {
                 </div>
               )}
             </div>
-
-            {/* Recent Sessions */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                Recent Sessions
-              </h2>
-              <div className="space-y-3">
-                {sessions.map((session) => (
-                  <div
-                    key={session.id}
-                    className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
-                  >
-                    <div>
-                      <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(session.status)}`}>
-                        {session.status}
-                      </span>
-                      <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                        {session.timestamp.toLocaleString()}
-                      </p>
-                    </div>
-                    {session.duration && (
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {session.duration} min
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
 
           {/* Quick Actions */}
@@ -885,7 +826,7 @@ export default function ProfilePage() {
                 Next Scheduled Call
               </h2>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Tomorrow at {scheduleTime}
+                Tomorrow at {userProfile?.scheduleTime}
               </p>
             </div>
           </div>

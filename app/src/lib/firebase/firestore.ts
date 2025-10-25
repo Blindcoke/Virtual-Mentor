@@ -15,39 +15,10 @@ import {
   QueryConstraint,
 } from 'firebase/firestore';
 import { db } from './config';
+import type { UserProfile, Session, CalendarConnection } from '@/types';
 
-// User Profile
-export interface UserProfile {
-  uid: string;
-  name: string;
-  email: string;
-  phone?: string;
-  timezone: string;
-  scheduleTime: string;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-}
-
-// Session
-export interface Session {
-  id: string;
-  userId: string;
-  status: 'scheduled' | 'completed' | 'missed' | 'in-progress';
-  timestamp: Timestamp;
-  duration?: number;
-  transcript?: string;
-  notes?: string;
-  roomName?: string;
-  phoneNumber?: string;  // Phone number called
-}
-
-// Calendar Connection
-export interface CalendarConnection {
-  userId: string;
-  provider: 'google';
-  connected: boolean;
-  lastSync?: Timestamp;
-}
+// Re-export types for backward compatibility
+export type { UserProfile, Session, CalendarConnection };
 
 // User Profile Operations
 export const createUserProfile = async (

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { WebhookReceiver } from 'livekit-server-sdk';
 import { updateSessionAdmin, Timestamp } from '@/lib/firebase/firestore-admin';
 import { adminDb } from '@/lib/firebase/admin';
+import type { SessionStatus, SessionAdmin } from '@/types';
 
 /**
  * LiveKit Webhook Handler
@@ -14,6 +15,28 @@ import { adminDb } from '@/lib/firebase/admin';
  *
  * Events are verified using JWT signature from LiveKit
  */
+
+/**
+ * Valid state transitions for session status
+ * Prevents out-of-order webhook events from corrupting state
+ */
+const VALID_TRANSITIONS: Record<SessionStatus, SessionStatus[]> = {
+  'scheduled': ['in-progress', 'ringing', 'missed'],
+  'in-progress': ['ringing', 'connected', 'ended', 'missed', 'completed'],
+  'ringing': ['connected', 'ended', 'missed'],
+  'connected': ['ended', 'completed'],
+  'completed': [], // Terminal state
+  'missed': [], // Terminal state
+  'ended': ['completed'], // Can transition to completed when room closes
+};
+
+/**
+ * Check if a status transition is valid
+ */
+function isValidTransition(currentStatus: SessionStatus, newStatus: SessionStatus): boolean {
+  const allowedTransitions = VALID_TRANSITIONS[currentStatus];
+  return allowedTransitions.includes(newStatus);
+}
 
 // Disable body parsing to get raw body for signature verification
 export const runtime = 'nodejs';
@@ -127,23 +150,27 @@ async function handleRoomFinished(event: any) {
     return;
   }
 
-  // Only update if not already ended
-  if (session.status !== 'ended' && session.status !== 'missed') {
-    // Calculate duration if timestamps are available
-    const duration = event.room?.duration; // Duration in seconds
-
-    await updateSessionAdmin(session.id, {
-      status: 'completed',
-      callStatus: 'disconnected',
-      endedAt: Timestamp.now(),
-      duration: duration || undefined,
-      notes: session.notes
-        ? `${session.notes}\n\nRoom closed at ${new Date().toISOString()}`
-        : `Room closed at ${new Date().toISOString()}`,
-    });
-
-    console.log('✅ Session marked as completed:', session.id);
+  // Validate state transition
+  const newStatus: SessionStatus = 'completed';
+  if (!isValidTransition(session.status as SessionStatus, newStatus)) {
+    console.warn(`⚠️ Invalid transition from ${session.status} to ${newStatus}, skipping update`);
+    return;
   }
+
+  // Calculate duration if timestamps are available
+  const duration = event.room?.duration; // Duration in seconds
+
+  await updateSessionAdmin(session.id, {
+    status: newStatus,
+    callStatus: 'disconnected',
+    endedAt: Timestamp.now(),
+    duration: duration || undefined,
+    notes: session.notes
+      ? `${session.notes}\n\nRoom closed at ${new Date().toISOString()}`
+      : `Room closed at ${new Date().toISOString()}`,
+  });
+
+  console.log('✅ Session marked as completed:', session.id);
 }
 
 /**
@@ -163,8 +190,15 @@ async function handleParticipantJoined(event: any) {
   if (roomName && participantIdentity?.startsWith('phone-')) {
     const session = await findSessionByRoomName(roomName);
     if (session) {
+      // Validate state transition
+      const newStatus: SessionStatus = 'connected';
+      if (!isValidTransition(session.status as SessionStatus, newStatus)) {
+        console.warn(`⚠️ Invalid transition from ${session.status} to ${newStatus}, skipping update`);
+        return;
+      }
+
       await updateSessionAdmin(session.id, {
-        status: 'connected',
+        status: newStatus,
         callStatus: 'connected',
         connectedAt: Timestamp.now(),
         notes: session.notes
@@ -193,6 +227,13 @@ async function handleParticipantLeft(event: any) {
   if (roomName && participantIdentity?.startsWith('phone-')) {
     const session = await findSessionByRoomName(roomName);
     if (session) {
+      // Validate state transition
+      const newStatus: SessionStatus = 'ended';
+      if (!isValidTransition(session.status as SessionStatus, newStatus)) {
+        console.warn(`⚠️ Invalid transition from ${session.status} to ${newStatus}, skipping update`);
+        return;
+      }
+
       // Calculate duration if call was connected
       let duration;
       if (session.connectedAt) {
@@ -201,7 +242,7 @@ async function handleParticipantLeft(event: any) {
       }
 
       await updateSessionAdmin(session.id, {
-        status: 'ended',
+        status: newStatus,
         callStatus: 'disconnected',
         endedAt: Timestamp.now(),
         duration,
@@ -217,7 +258,7 @@ async function handleParticipantLeft(event: any) {
 /**
  * Find a session document by room name
  */
-async function findSessionByRoomName(roomName: string) {
+async function findSessionByRoomName(roomName: string): Promise<(SessionAdmin & { id: string }) | null> {
   const sessionsRef = adminDb.collection('sessions');
   const querySnapshot = await sessionsRef.where('roomName', '==', roomName).limit(1).get();
 
@@ -229,5 +270,5 @@ async function findSessionByRoomName(roomName: string) {
   return {
     id: doc.id,
     ...doc.data(),
-  };
+  } as SessionAdmin & { id: string };
 }

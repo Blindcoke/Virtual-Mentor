@@ -10,23 +10,10 @@ import {
   limit
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
+import type { Message, Conversation } from '@/types';
 
-export interface Message {
-  id: string;
-  text: string;
-  sender: 'ai' | 'user';
-  timestamp: Date;
-  isTranscribing?: boolean;
-}
-
-export interface Conversation {
-  id: string;
-  userId: string;
-  messages: Message[];
-  isActive: boolean;
-  createdAt?: Date;
-  updatedAt?: Date;
-}
+// Re-export types for backward compatibility
+export type { Message, Conversation };
 
 export function useConversations(userId: string) {
   const [conversation, setConversation] = useState<Conversation | null>(null);

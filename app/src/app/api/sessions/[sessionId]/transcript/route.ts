@@ -1,8 +1,7 @@
 // app/api/sessions/[sessionId]/transcript/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { updateSession } from '@/lib/firebase/firestore';
-import { db } from '@/lib/firebase/config';
-import { doc, getDoc } from 'firebase/firestore';
+import { verifySessionExists } from '@/lib/api/session-utils';
 
 /**
  * API endpoint to save a complete transcript to a session
@@ -28,15 +27,10 @@ export async function POST(
       );
     }
 
-    // Verify session exists
-    const sessionRef = doc(db, 'sessions', sessionId);
-    const sessionSnap = await getDoc(sessionRef);
-
-    if (!sessionSnap.exists()) {
-      return NextResponse.json(
-        { error: 'Session not found' },
-        { status: 404 }
-      );
+    // Verify session exists using shared utility
+    const validation = await verifySessionExists(sessionId);
+    if (!validation.valid) {
+      return validation.error!;
     }
 
     // Update session with transcript
@@ -74,18 +68,13 @@ export async function GET(
   try {
     const { sessionId } = await params;
 
-    // Get session
-    const sessionRef = doc(db, 'sessions', sessionId);
-    const sessionSnap = await getDoc(sessionRef);
-
-    if (!sessionSnap.exists()) {
-      return NextResponse.json(
-        { error: 'Session not found' },
-        { status: 404 }
-      );
+    // Verify session exists using shared utility
+    const validation = await verifySessionExists(sessionId);
+    if (!validation.valid) {
+      return validation.error!;
     }
 
-    const sessionData = sessionSnap.data();
+    const sessionData = validation.sessionData!;
 
     return NextResponse.json({
       success: true,
