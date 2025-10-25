@@ -4,73 +4,106 @@ import { Timestamp as FirestoreTimestamp } from 'firebase/firestore';
  * Shared type definitions for the Virtual Mentor app
  */
 
-// Unified Session Status
-export type SessionStatus =
-  | 'scheduled'
-  | 'in-progress'
-  | 'ringing'
-  | 'connected'
-  | 'completed'
-  | 'missed'
-  | 'ended';
+// ============================================================================
+// Call Sessions (Read-only, created by external system)
+// ============================================================================
 
-export type CallStatus =
-  | 'initiating'
-  | 'ringing'
-  | 'connected'
-  | 'disconnected'
-  | 'failed';
-
-// Client-side Session (uses client Timestamp)
-export interface Session {
+// Client-side CallSession (uses client Timestamp)
+export interface CallSession {
   id: string;
-  userId: string;
-  status: SessionStatus;
-  timestamp: FirestoreTimestamp;
-  duration?: number;
-  transcript?: string;
-  notes?: string;
-  roomName?: string;
-  phoneNumber?: string;
-  callStatus?: CallStatus;
-  connectedAt?: FirestoreTimestamp;
-  endedAt?: FirestoreTimestamp;
+  agent_type: string;
+  conversation_id: string;
+  job_id: string;
+  metadata: string;
+  phone_number: string;
+  room_name: string;
+  started_at: FirestoreTimestamp;
+  user_name: string | null;
 }
 
-// Server-side Session (uses admin Timestamp)
-// Note: Uses FirebaseFirestore.Timestamp type instead of importing firebase-admin
-export interface SessionAdmin {
+// Server-side CallSession (uses admin Timestamp)
+export interface CallSessionAdmin {
   id: string;
-  userId: string;
-  status: SessionStatus;
-  timestamp: FirebaseFirestore.Timestamp;
-  duration?: number;
-  transcript?: string;
-  notes?: string;
-  roomName?: string;
-  phoneNumber?: string;
-  callStatus?: CallStatus;
-  connectedAt?: FirebaseFirestore.Timestamp;
-  endedAt?: FirebaseFirestore.Timestamp;
+  agent_type: string;
+  conversation_id: string;
+  job_id: string;
+  metadata: string;
+  phone_number: string;
+  room_name: string;
+  started_at: FirebaseFirestore.Timestamp;
+  user_name: string | null;
 }
 
-// Message
-export interface Message {
-  id: string;
-  text: string;
-  sender: 'ai' | 'user';
-  timestamp: Date;
-  isTranscribing?: boolean;
-}
+// ============================================================================
+// Conversations (Read-only, created by external system)
+// ============================================================================
 
-// Conversation
+export type ConversationStatus = 'active' | 'completed';
+
+// Client-side Conversation (uses client Timestamp)
 export interface Conversation {
   id: string;
-  userId: string;
-  messages: Message[];
-  isActive: boolean;
-  createdAt?: Date;
-  updatedAt?: Date;
+  ended_at: FirestoreTimestamp | null;
+  job_id: string;
+  last_message: string;
+  last_message_at: FirestoreTimestamp;
+  last_message_id: string;
+  last_message_role: 'assistant' | 'user';
+  phone_number: string;
+  room_name: string;
+  started_at: FirestoreTimestamp;
+  status: ConversationStatus;
+  updatedAt: FirestoreTimestamp;
+  user_id: string | null;
+  user_name: string | null;
+}
+
+// Server-side Conversation (uses admin Timestamp)
+export interface ConversationAdmin {
+  id: string;
+  ended_at: FirebaseFirestore.Timestamp | null;
+  job_id: string;
+  last_message: string;
+  last_message_at: FirebaseFirestore.Timestamp;
+  last_message_id: string;
+  last_message_role: 'assistant' | 'user';
+  phone_number: string;
+  room_name: string;
+  started_at: FirebaseFirestore.Timestamp;
+  status: ConversationStatus;
+  updatedAt: FirebaseFirestore.Timestamp;
+  user_id: string | null;
+  user_name: string | null;
+}
+
+// ============================================================================
+// Messages (Subcollection of conversations, read-only)
+// ============================================================================
+
+export interface ToolCall {
+  name: string;
+  arguments: string;
+  output: string;
+}
+
+// Client-side ConversationMessage (uses client Timestamp)
+export interface ConversationMessage {
+  id: string;
+  message: string;
+  role: 'assistant' | 'user';
+  timestamp: FirestoreTimestamp;
+  user_id: string | null;
+  tool_calls?: ToolCall[];
+}
+
+// Server-side ConversationMessage (uses admin Timestamp)
+export interface ConversationMessageAdmin {
+  id: string;
+  message: string;
+  role: 'assistant' | 'user';
+  timestamp: FirebaseFirestore.Timestamp;
+  user_id: string | null;
+  tool_calls?: ToolCall[];
 }
 
 // User Profile

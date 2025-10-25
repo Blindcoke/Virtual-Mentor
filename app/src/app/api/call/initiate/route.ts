@@ -1,7 +1,6 @@
 // app/api/call/initiate/route.ts
+import { AccessToken, AgentDispatchClient, RoomServiceClient, SipClient } from 'livekit-server-sdk';
 import { NextRequest, NextResponse } from 'next/server';
-import { AccessToken, RoomServiceClient, SipClient } from 'livekit-server-sdk';
-import { createSessionAdmin, updateSessionAdmin, Timestamp } from '@/lib/firebase/firestore-admin';
 
 
 export async function POST(request: NextRequest) {
@@ -35,10 +34,11 @@ export async function POST(request: NextRequest) {
 
     // Initialize LiveKit clients
     const roomService = new RoomServiceClient(livekitUrl, apiKey, apiSecret);
+    const agentDispatchClient = new AgentDispatchClient(livekitUrl, apiKey, apiSecret);
     const sipClient = new SipClient(livekitUrl, apiKey, apiSecret);
 
     // Generate a unique room name for this call
-    const roomName = `mentor-call-${userId}-${Date.now()}`;
+    const roomName = `call-_${userId}-${Date.now()}`;
 
     // Create the room
     await roomService.createRoom({
@@ -49,85 +49,60 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Created room: ${roomName}`);
 
-    // Create a Firestore session to track the call
-    const sessionId = await createSessionAdmin({
-      userId,
-      status: 'in-progress',
-      callStatus: 'initiating',
-      timestamp: Timestamp.now(),
-      roomName,
-      phoneNumber,
-      notes: `Outbound call to ${phoneNumber}`,
+    const dispatch = await agentDispatchClient.createDispatch(roomName, 'my-telephony-agent');
+    console.log(`✅ Created dispatch: ${dispatch}`);
+
+
+    
+    // Note: Session tracking is now handled by external system via webhooks
+    // We only create the LiveKit room and SIP call here
+
+    // Create SIP participant using the correct API
+    const sipParticipant = await sipClient.createSipParticipant(
+      sipTrunkId,      // SIP trunk ID
+      phoneNumber,     // Phone number in E.164 format (+1234567890)
+      roomName,        // Room to join
+      {
+        participantIdentity: `phone-${userId}`,
+        participantName: userName || 'User',
+        dtmf: '',      // Optional: DTMF tones to send
+        playDialtone: true,  // Play dial tone while connecting
+      }
+    );
+
+    console.log(`✅ SIP participant created:`, sipParticipant);
+    console.log(`📞 Calling ${phoneNumber}...`);
+
+    // Create an access token for the agent (if you have an agent service)
+    const token = new AccessToken(apiKey, apiSecret, {
+      identity: `agent-${roomName}`,
+      name: 'Virtual Mentor Agent',
     });
 
-    console.log(`✅ Created session: ${sessionId}`);
+    token.addGrant({
+      roomJoin: true,
+      room: roomName,
+      canPublish: true,
+      canSubscribe: true,
+      canPublishData: true,
+    });
 
-    try {
-      // Create SIP participant using the correct API
-      const sipParticipant = await sipClient.createSipParticipant(
-        sipTrunkId,      // SIP trunk ID
-        phoneNumber,     // Phone number in E.164 format (+1234567890)
-        roomName,        // Room to join
-        {
-          participantIdentity: `phone-${userId}`,
-          participantName: userName || 'User',
-          dtmf: '',      // Optional: DTMF tones to send
-          playDialtone: true,  // Play dial tone while connecting
-        }
-      );
+    const agentToken = await token.toJwt();
 
-      console.log(`✅ SIP participant created:`, sipParticipant);
-      console.log(`📞 Calling ${phoneNumber}...`);
-
-      // Update session status to ringing
-      await updateSessionAdmin(sessionId, {
-        callStatus: 'ringing',
-        notes: `Call initiated to ${phoneNumber}, waiting for answer...`,
-      });
-
-      // Create an access token for the agent (if you have an agent service)
-      const token = new AccessToken(apiKey, apiSecret, {
-        identity: `agent-${roomName}`,
-        name: 'Virtual Mentor Agent',
-      });
-
-      token.addGrant({
-        roomJoin: true,
-        room: roomName,
-        canPublish: true,
-        canSubscribe: true,
-        canPublishData: true,
-      });
-
-      const agentToken = await token.toJwt();
-
-      // Return call information
-      return NextResponse.json({
-        success: true,
-        sessionId,
-        roomName,
-        roomUrl: `${livekitUrl}/${roomName}`,
-        sipParticipant: {
-          participantId: sipParticipant.participantId,
-          participantIdentity: sipParticipant.participantIdentity,
-          roomName: sipParticipant.roomName,
-        },
-        agentToken,
-        message: `Calling ${phoneNumber}...`,
-      });
-    } catch (sipError) {
-      console.error('❌ SIP Error:', sipError);
-
-      // Update session to failed status
-      await updateSessionAdmin(sessionId, {
-        status: 'missed',
-        callStatus: 'failed',
-        endedAt: Timestamp.now(),
-        notes: `Failed to initiate call: ${sipError instanceof Error ? sipError.message : 'Unknown error'}`,
-      });
-
-      throw sipError;
-    }
+    // Return call information
+    return NextResponse.json({
+      success: true,
+      roomName,
+      phoneNumber,
+      roomUrl: `${livekitUrl}/${roomName}`,
+      sipParticipant: {
+        participantId: sipParticipant.participantId,
+        participantIdentity: sipParticipant.participantIdentity,
+        roomName: sipParticipant.roomName,
+      },
+      agentToken,
+      message: `Calling ${phoneNumber}...`,
+    });
   } catch (error) {
     console.error('❌ Error initiating call:', error);
     return NextResponse.json(

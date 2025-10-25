@@ -1,7 +1,7 @@
 'use client';
 
 import { db } from '@/lib/firebase/config';
-import type { Session, UserProfile, UserWithStatus } from '@/types';
+import type { Conversation, UserProfile, UserWithStatus } from '@/types';
 import { collection, getDocs, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 
@@ -19,30 +19,35 @@ export function useUsers() {
 
       const usersWithStatus = await Promise.all(
         userProfiles.map(async (user) => {
-          const sessionsRef = collection(db, 'sessions');
+          // Skip users without phone numbers
+          if (!user.phone) {
+            return { ...user, status: 'inactive' as const };
+          }
+
+          const conversationsRef = collection(db, 'conversations');
           const q = query(
-            sessionsRef,
-            where('userId', '==', user.uid),
-            orderBy('timestamp', 'desc'),
+            conversationsRef,
+            where('phone_number', '==', user.phone),
+            orderBy('started_at', 'desc'),
             limit(1)
           );
 
           try {
-            const sessionSnapshot = await getDocs(q);
-            const latestSession = sessionSnapshot.docs[0]?.data() as Session | undefined;
+            const conversationSnapshot = await getDocs(q);
+            const latestConversation = conversationSnapshot.docs[0]?.data() as Conversation | undefined;
 
             let status: UserWithStatus['status'] = 'inactive';
-            if (latestSession) {
-              if (latestSession.status === 'in-progress') {
+            if (latestConversation) {
+              if (latestConversation.status === 'active') {
                 status = 'in-call';
-              } else if (latestSession.status === 'completed' || latestSession.status === 'scheduled') {
+              } else if (latestConversation.status === 'completed') {
                 status = 'active';
               }
             }
 
             return { ...user, status };
-          } catch (sessionErr) {
-            console.warn('⚠️ Error fetching sessions for user', user.uid, sessionErr);
+          } catch (conversationErr) {
+            console.warn('⚠️ Error fetching conversations for user', user.uid, conversationErr);
             return { ...user, status: 'inactive' as const };
           }
         })
@@ -77,10 +82,10 @@ export function useUsers() {
       }
     );
 
-    // Listen to sessions collection to update user statuses in real-time
-    const sessionsRef = collection(db, 'sessions');
-    const unsubscribeSessions = onSnapshot(
-      sessionsRef,
+    // Listen to conversations collection to update user statuses in real-time
+    const conversationsRef = collection(db, 'conversations');
+    const unsubscribeConversations = onSnapshot(
+      conversationsRef,
       async () => {
         try {
           const usersSnapshot = await getDocs(collection(db, 'users'));
@@ -90,14 +95,14 @@ export function useUsers() {
           } as UserProfile));
           await updateUsersWithStatus(userProfiles);
         } catch {
-          // Silent error handling for session updates
+          // Silent error handling for conversation updates
         }
       }
     );
 
     return () => {
       unsubscribeUsers();
-      unsubscribeSessions();
+      unsubscribeConversations();
     };
   }, []);
 

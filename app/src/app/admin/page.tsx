@@ -3,13 +3,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useUsers } from '@/hooks/useUsers';
 import { useConversations } from '@/hooks/useConversations';
+import { ToolCallDisplay } from '@/components/tool-call-display';
 import Link from 'next/link';
 
 export default function AdminPage() {
   const { users, loading: usersLoading, error: usersError } = useUsers();
   // Auto-select first user when users load
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const { conversation, loading: conversationLoading, error: conversationError } = useConversations(selectedUserId || undefined);
+  const { conversation, messages, loading: conversationLoading, error: conversationError } = useConversations(selectedUserId || undefined);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-select first user - derived from users array
@@ -29,7 +30,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [conversation]);
+  }, [messages]);
 
   const handleTriggerCall = async (userId: string) => {
     try {
@@ -59,7 +60,7 @@ export default function AdminPage() {
         throw new Error(data.error || 'Failed to initiate call');
       }
 
-      console.log('✅ Call initiated from admin, session ID:', data.sessionId);
+      console.log('✅ Call initiated from admin');
       setSelectedUserId(userId);
     } catch (error) {
       console.error('Error starting call:', error);
@@ -171,32 +172,28 @@ export default function AdminPage() {
             <div className="flex items-center justify-center h-full">
               <div className="text-center text-red-500 dark:text-red-400">Error loading conversation.</div>
             </div>
-          ) : conversation && conversation.messages.length > 0 ? (
+          ) : messages && messages.length > 0 ? (
             <div className="space-y-4 max-w-4xl mx-auto">
-              {conversation.messages.map((message) => (
+              {messages.map((message) => (
                 <div
                   key={message.id}
-                  className={`flex ${message.sender === 'ai' ? 'justify-start' : 'justify-end'}`}>
+                  className={`flex ${message.role === 'assistant' ? 'justify-start' : 'justify-end'}`}>
                   <div
-                    className={`max-w-[70%] rounded-lg px-4 py-3 ${message.sender === 'ai'
+                    className={`max-w-[70%] rounded-lg px-4 py-3 ${message.role === 'assistant'
                         ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white'
                         : 'bg-blue-600 text-white'
                       } shadow-sm`}>
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs font-semibold">
-                        {message.sender === 'ai' ? 'AI Mentor' : selectedUser?.name}
+                        {message.role === 'assistant' ? 'AI Mentor' : selectedUser?.name}
                       </span>
                       <span className="text-xs opacity-70">
-                        {message.timestamp.toLocaleTimeString()}
+                        {message.timestamp?.toDate?.()?.toLocaleTimeString() || 'N/A'}
                       </span>
                     </div>
-                    <p className="text-sm leading-relaxed">{message.text}</p>
-                    {message.isTranscribing && (
-                      <div className="flex items-center gap-1 mt-2">
-                        <div className="w-1 h-1 bg-current rounded-full animate-pulse" />
-                        <div className="w-1 h-1 bg-current rounded-full animate-pulse delay-75" />
-                        <div className="w-1 h-1 bg-current rounded-full animate-pulse delay-150" />
-                      </div>
+                    <p className="text-sm leading-relaxed">{message.message}</p>
+                    {message.tool_calls && message.tool_calls.length > 0 && (
+                      <ToolCallDisplay toolCalls={message.tool_calls} />
                     )}
                   </div>
                 </div>

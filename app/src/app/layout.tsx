@@ -1,7 +1,7 @@
-import type { Metadata } from "next";
-import { Lato } from "next/font/google";
 import { QueryProvider } from "@/providers/query-provider";
 import { ToastProvider } from "@/providers/toast-provider";
+import type { Metadata } from "next";
+import { Lato } from "next/font/google";
 import "./globals.css";
 
 const lato = Lato({
@@ -13,6 +13,9 @@ const lato = Lato({
 export const metadata: Metadata = {
   title: "Virtual Mentor - AI-Powered Mentorship",
   description: "Your personal AI mentor for daily guidance and accountability",
+  icons: {
+    icon: "/rise.png",
+  },
 };
 
 export default function RootLayout({
