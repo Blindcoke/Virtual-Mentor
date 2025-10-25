@@ -3,14 +3,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { useUsers } from '@/hooks/useUsers';
 import { useConversations } from '@/hooks/useConversations';
+import { useInitiateCall } from '@/hooks/use-call';
 import { ToolCallDisplay } from '@/components/tool-call-display';
-import Link from 'next/link';
+import { ChevronLeft, ChevronRight, Phone } from 'lucide-react';
 
 export default function AdminPage() {
   const { users, loading: usersLoading, error: usersError } = useUsers();
   // Auto-select first user when users load
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { conversation, messages, loading: conversationLoading, error: conversationError } = useConversations(selectedUserId || undefined);
+  const initiateCall = useInitiateCall();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-select first user - derived from users array
@@ -32,39 +35,16 @@ export default function AdminPage() {
     scrollToBottom();
   }, [messages]);
 
-  const handleTriggerCall = async (userId: string) => {
-    try {
-      // Get user details
-      const selectedUser = users.find(u => u.uid === userId);
-      if (!selectedUser || !selectedUser.phone) {
-        console.error('User not found or has no phone number');
-        return;
-      }
-
-      // Initiate the actual call via API
-      const response = await fetch('/api/call/initiate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          phoneNumber: selectedUser.phone,
-          userId: selectedUser.uid,
-          userName: selectedUser.name,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to initiate call');
-      }
-
-      console.log('✅ Call initiated from admin');
-      setSelectedUserId(userId);
-    } catch (error) {
-      console.error('Error starting call:', error);
+  const handleCallNow = () => {
+    if (!selectedUser || !selectedUser.phone) {
+      return;
     }
+
+    initiateCall.mutate({
+      phoneNumber: selectedUser.phone,
+      userId: selectedUser.uid,
+      userName: selectedUser.name,
+    });
   };
 
   const selectedUser = users.find(u => u.uid === selectedUserId);
@@ -72,63 +52,88 @@ export default function AdminPage() {
   return (
     <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
       {/* Sidebar - User List */}
-      <div className="w-80 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+      <div className={`bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-80'}`}>
         {/* Header */}
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-1">
-            Admin Dashboard
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Monitor live conversations
-          </p>
+          <div className="flex items-center justify-between mb-1">
+            {!sidebarCollapsed && (
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+                Admin Dashboard
+              </h1>
+            )}
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {sidebarCollapsed ? (
+                <ChevronRight className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              ) : (
+                <ChevronLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              )}
+            </button>
+          </div>
+          {!sidebarCollapsed && (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Monitor live conversations
+            </p>
+          )}
         </div>
 
         {/* Stats */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
-            <p className="text-xs text-green-600 dark:text-green-400">Total Users</p>
-            <p className="text-2xl font-bold text-green-700 dark:text-green-300">
-              {users.length}
-            </p>
+        {!sidebarCollapsed && (
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
+              <p className="text-xs text-green-600 dark:text-green-400">Total Users</p>
+              <p className="text-2xl font-bold text-green-700 dark:text-green-300">
+                {users.length}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* User List */}
         <div className="flex-1 overflow-y-auto">
           {usersLoading ? (
-            <div className="p-4 text-center text-gray-500 dark:text-gray-400">Loading users...</div>
+            <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+              {!sidebarCollapsed && 'Loading users...'}
+            </div>
           ) : usersError ? (
-            <div className="p-4 text-center text-red-500 dark:text-red-400">Error loading users.</div>
+            <div className="p-4 text-center text-red-500 dark:text-red-400">
+              {!sidebarCollapsed && 'Error loading users.'}
+            </div>
           ) : (
             users.map((user) => (
-                <div
-                  key={user.uid}
-                  onClick={() => setSelectedUserId(user.uid)}
-                  className={`p-4 border-b border-gray-200 dark:border-gray-700 cursor-pointer transition ${selectedUserId === user.uid
-                      ? 'bg-blue-50 dark:bg-blue-900/20'
-                      : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                    }`}
-                >
-                  <div className="flex items-start justify-between mb-1">
-                    <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
-                      {user.name}
-                    </h3>
+              <div
+                key={user.uid}
+                onClick={() => setSelectedUserId(user.uid)}
+                className={`p-4 border-b border-gray-200 dark:border-gray-700 cursor-pointer transition ${
+                  selectedUserId === user.uid
+                    ? 'bg-blue-50 dark:bg-blue-900/20'
+                    : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                }`}
+                title={sidebarCollapsed ? user.name : undefined}
+              >
+                {sidebarCollapsed ? (
+                  <div className="flex justify-center">
+                    <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-semibold text-sm">
+                      {user.name.charAt(0).toUpperCase()}
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    {user.phone}
-                  </p>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleTriggerCall(user.uid);
-                    }}
-                    className="mt-2 w-full px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
-                  >
-                    Trigger Call
-                  </button>
-                </div>
-              )
-            )
+                ) : (
+                  <>
+                    <div className="flex items-start justify-between mb-1">
+                      <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
+                        {user.name}
+                      </h3>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {user.phone}
+                    </p>
+                  </>
+                )}
+              </div>
+            ))
           )}
         </div>
       </div>
@@ -148,9 +153,14 @@ export default function AdminPage() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Link href="/" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
-                  Exit
-                </Link>
+                <button
+                  onClick={handleCallNow}
+                  disabled={initiateCall.isPending}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg transition font-medium"
+                >
+                  <Phone className="w-4 h-4" />
+                  {initiateCall.isPending ? 'Calling...' : 'Call Now'}
+                </button>
               </div>
             </div>
           </div>
