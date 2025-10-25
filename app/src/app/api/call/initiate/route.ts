@@ -1,5 +1,5 @@
 // app/api/call/initiate/route.ts
-import { AccessToken, RoomServiceClient, SipClient } from 'livekit-server-sdk';
+import { AccessToken, AgentDispatchClient, RoomServiceClient, SipClient } from 'livekit-server-sdk';
 import { NextRequest, NextResponse } from 'next/server';
 
 
@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
 
     // Initialize LiveKit clients
     const roomService = new RoomServiceClient(livekitUrl, apiKey, apiSecret);
+    const agentDispatchClient = new AgentDispatchClient(livekitUrl, apiKey, apiSecret);
     const sipClient = new SipClient(livekitUrl, apiKey, apiSecret);
 
     // Generate a unique room name for this call
@@ -48,6 +49,11 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Created room: ${roomName}`);
 
+    const dispatch = await agentDispatchClient.createDispatch(roomName, 'my-telephony-agent');
+    console.log(`✅ Created dispatch: ${dispatch}`);
+
+
+    
     // Note: Session tracking is now handled by external system via webhooks
     // We only create the LiveKit room and SIP call here
 
