@@ -1,12 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// CORS headers for cross-origin requests
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+// Handle OPTIONS request for CORS preflight
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
+
 export async function GET(request: NextRequest) {
   const accessToken = request.cookies.get('tasks_access_token')?.value;
 
   if (!accessToken) {
     return NextResponse.json(
       { error: 'Not connected to Google Tasks' },
-      { status: 401 }
+      { status: 401, headers: corsHeaders }
     );
   }
 
@@ -25,7 +37,7 @@ export async function GET(request: NextRequest) {
       if (listsResponse.status === 401) {
         return NextResponse.json(
           { error: 'Token expired', connected: false },
-          { status: 401 }
+          { status: 401, headers: corsHeaders }
         );
       }
       throw new Error('Failed to fetch task lists');
@@ -77,12 +89,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ tasks: allTasks });
+    return NextResponse.json({ tasks: allTasks }, { headers: corsHeaders });
   } catch (error) {
     console.error('Tasks fetch error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch tasks' },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
