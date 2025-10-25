@@ -1,12 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// CORS headers for cross-origin requests
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+// Handle OPTIONS request for CORS preflight
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
+
 export async function GET(request: NextRequest) {
   const accessToken = request.cookies.get('drive_access_token')?.value;
 
   if (!accessToken) {
     return NextResponse.json(
       { error: 'Not connected to Google Drive' },
-      { status: 401 }
+      { status: 401, headers: corsHeaders }
     );
   }
 
@@ -31,7 +43,7 @@ export async function GET(request: NextRequest) {
       if (response.status === 401) {
         return NextResponse.json(
           { error: 'Token expired', connected: false },
-          { status: 401 }
+          { status: 401, headers: corsHeaders }
         );
       }
       throw new Error('Failed to fetch documents');
@@ -53,12 +65,12 @@ export async function GET(request: NextRequest) {
       link: file.webViewLink,
     }));
 
-    return NextResponse.json({ documents });
+    return NextResponse.json({ documents }, { headers: corsHeaders });
   } catch (error) {
     console.error('Drive documents fetch error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch documents' },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
