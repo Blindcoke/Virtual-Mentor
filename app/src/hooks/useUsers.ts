@@ -59,7 +59,10 @@ export function useUsers() {
       async (snapshot) => {
         try {
           console.log('📥 useUsers: Received users snapshot, size:', snapshot.size);
-          const userProfiles = snapshot.docs.map(doc => doc.data() as UserProfile);
+          const userProfiles = snapshot.docs.map(doc => ({
+            ...doc.data(),
+            uid: doc.id
+          } as UserProfile));
           await updateUsersWithStatus(userProfiles);
           setLoading(false);
         } catch (err) {

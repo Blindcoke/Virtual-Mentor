@@ -1,9 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -81,6 +80,12 @@ export default function ProfilePage() {
 
   const [sessions] = useState<Session[]>([]); // Removed mocked data
 
+  // Call state
+  const [isCallInProgress, setIsCallInProgress] = useState(false);
+  const [callStatus, setCallStatus] = useState<string | null>(null);
+  const [callError, setCallError] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+
   // Fetch user profile from Firestore
   useEffect(() => {
     if (authLoading) return;
@@ -119,6 +124,58 @@ export default function ProfilePage() {
 
     fetchUserProfile();
   }, [user, authLoading, router]);
+
+  // Listen to active session status in real-time
+  useEffect(() => {
+    if (!activeSessionId) return;
+
+    console.log('📡 Listening to session:', activeSessionId);
+
+    const sessionRef = doc(db, 'sessions', activeSessionId);
+    const unsubscribe = onSnapshot(
+      sessionRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const sessionData = snapshot.data() as Session;
+          console.log('📊 Session update:', sessionData.status);
+
+          switch (sessionData.status) {
+            case 'in-progress':
+              setIsCallInProgress(true);
+              setCallStatus('Call in progress...');
+              setCallError(null);
+              break;
+            case 'completed':
+              setIsCallInProgress(false);
+              setCallStatus('Call completed successfully!');
+              setCallError(null);
+              // Clear status after 3 seconds
+              setTimeout(() => {
+                setCallStatus(null);
+                setActiveSessionId(null);
+              }, 3000);
+              break;
+            case 'missed':
+              setIsCallInProgress(false);
+              setCallStatus(null);
+              setCallError('Call failed or was missed');
+              // Clear error after 5 seconds
+              setTimeout(() => {
+                setCallError(null);
+                setActiveSessionId(null);
+              }, 5000);
+              break;
+          }
+        }
+      },
+      (error) => {
+        console.error('Error listening to session:', error);
+        setCallError('Failed to monitor call status');
+      }
+    );
+
+    return () => unsubscribe();
+  }, [activeSessionId]);
 
   // Check all connections on mount
   useEffect(() => {
@@ -210,8 +267,51 @@ export default function ProfilePage() {
   };
 
   const handleManualCall = async () => {
-    // TODO: Implement manual call trigger
-    alert('Manual call initiated!');
+    if (!user || !userProfile) {
+      setCallError('User profile not loaded');
+      return;
+    }
+
+    if (!phone) {
+      setCallError('Phone number not set. Please add your phone number in settings.');
+      return;
+    }
+
+    setIsCallInProgress(true);
+    setCallError(null);
+    setCallStatus('Initiating call...');
+
+    try {
+      const response = await fetch('/api/call/initiate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phoneNumber: phone,
+          userId: user.uid,
+          userName: name,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to initiate call');
+      }
+
+      // Set the active session ID to start real-time monitoring
+      setActiveSessionId(data.sessionId);
+      setCallStatus(`Call initiated! Calling ${phone}...`);
+
+      console.log('✅ Call initiated, session ID:', data.sessionId);
+    } catch (error) {
+      console.error('Error initiating call:', error);
+      setCallError(
+        error instanceof Error ? error.message : 'Failed to initiate call'
+      );
+      setIsCallInProgress(false);
+    }
   };
 
   const handleConnectCalendar = async () => {
@@ -352,13 +452,14 @@ export default function ProfilePage() {
     try {
       const userDocRef = doc(db, 'users', user.uid);
       await updateDoc(userDocRef, {
+        phone,
         timezone,
         scheduleTime,
       });
-      alert('Schedule settings saved!');
+      alert('Settings saved successfully!');
     } catch (error) {
-      console.error('Error saving schedule settings:', error);
-      alert('Failed to save schedule settings.');
+      console.error('Error saving settings:', error);
+      alert('Failed to save settings.');
     }
   };
 
@@ -428,12 +529,29 @@ export default function ProfilePage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Settings Card */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Schedule Settings */}
+            {/* Profile Settings */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                Schedule Settings
+                Profile Settings
               </h2>
               <div className="space-y-4">
+                <div>
+                  <label htmlFor="phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Phone Number
+                  </label>
+                  <input
+                    id="phone"
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    placeholder="+1234567890"
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Include country code (e.g., +1 for US)
+                  </p>
+                </div>
+
                 <div>
                   <label htmlFor="timezone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Timezone
@@ -470,7 +588,7 @@ export default function ProfilePage() {
                   onClick={handleSaveSchedule}
                   className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition"
                 >
-                  Save Schedule
+                  Save Settings
                 </button>
               </div>
             </div>
@@ -736,11 +854,29 @@ export default function ProfilePage() {
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                 Quick Actions
               </h2>
+
+              {callError && (
+                <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                  <p className="text-sm text-red-600 dark:text-red-400">{callError}</p>
+                </div>
+              )}
+
+              {callStatus && (
+                <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                  <p className="text-sm text-green-600 dark:text-green-400">{callStatus}</p>
+                </div>
+              )}
+
               <button
                 onClick={handleManualCall}
-                className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200"
+                disabled={isCallInProgress}
+                className={`w-full py-3 px-4 ${
+                  isCallInProgress
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
+                } text-white font-semibold rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200`}
               >
-                Manual Call Now
+                {isCallInProgress ? 'Calling...' : 'Manual Call Now'}
               </button>
             </div>
 

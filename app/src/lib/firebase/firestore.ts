@@ -37,6 +37,8 @@ export interface Session {
   duration?: number;
   transcript?: string;
   notes?: string;
+  roomName?: string;
+  phoneNumber?: string;  // Phone number called
 }
 
 // Calendar Connection
