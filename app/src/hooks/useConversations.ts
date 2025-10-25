@@ -130,6 +130,7 @@ export function useConversations(userId: string | undefined) {
                   role: data.role || 'user',
                   timestamp: data.timestamp,
                   user_id: data.user_id || null,
+                  tool_calls: data.tool_calls || undefined,
                 };
               });
 

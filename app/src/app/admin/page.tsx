@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useUsers } from '@/hooks/useUsers';
 import { useConversations } from '@/hooks/useConversations';
+import { ToolCallDisplay } from '@/components/tool-call-display';
 import Link from 'next/link';
 
 export default function AdminPage() {
@@ -191,6 +192,9 @@ export default function AdminPage() {
                       </span>
                     </div>
                     <p className="text-sm leading-relaxed">{message.message}</p>
+                    {message.tool_calls && message.tool_calls.length > 0 && (
+                      <ToolCallDisplay toolCalls={message.tool_calls} />
+                    )}
                   </div>
                 </div>
               ))}

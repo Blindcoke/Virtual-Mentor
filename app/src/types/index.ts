@@ -80,6 +80,12 @@ export interface ConversationAdmin {
 // Messages (Subcollection of conversations, read-only)
 // ============================================================================
 
+export interface ToolCall {
+  name: string;
+  arguments: string;
+  output: string;
+}
+
 // Client-side ConversationMessage (uses client Timestamp)
 export interface ConversationMessage {
   id: string;
@@ -87,6 +93,7 @@ export interface ConversationMessage {
   role: 'assistant' | 'user';
   timestamp: FirestoreTimestamp;
   user_id: string | null;
+  tool_calls?: ToolCall[];
 }
 
 // Server-side ConversationMessage (uses admin Timestamp)
@@ -96,6 +103,7 @@ export interface ConversationMessageAdmin {
   role: 'assistant' | 'user';
   timestamp: FirebaseFirestore.Timestamp;
   user_id: string | null;
+  tool_calls?: ToolCall[];
 }
 
 // User Profile
